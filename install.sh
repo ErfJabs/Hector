@@ -3,7 +3,8 @@
 ### Basic setup
 USERNAME="ErfJabs"
 SCRIPT_NAME="hector"
-DEFAULT_BRANCH="master"
+# Branch the script installs/updates itself from. Override for testing: HECTOR_BRANCH=dev
+DEFAULT_BRANCH="${HECTOR_BRANCH:-master}"
 INSTALL_BASE_DIR="/opt/erfjab/${SCRIPT_NAME}"
 REPO_URL="https://github.com/${USERNAME}/${SCRIPT_NAME}.git"
 
@@ -394,15 +395,17 @@ script_install() {
         success "Existing script removed"
     fi
 
-    ### Download the script
+    ### Download the script (-f: fail on HTTP errors instead of installing "404: Not Found")
     log "Installing $SCRIPT_NAME script..."
-    curl -sSL -o "$script_path" "$script_url" || {
-        error "Failed to download the script"
-    }
+    if ! curl -fsSL -o "$script_path" "$script_url"; then
+        rm -f "$script_path"
+        error "Failed to download the script from '$script_url'"
+    fi
 
-    ### Verify the downloaded script
-    if [[ ! -s "$script_path" ]]; then
-        error "Downloaded script is empty or invalid"
+    ### Verify the downloaded script starts with a shebang
+    if ! head -n1 "$script_path" | grep -q '^#!'; then
+        rm -f "$script_path"
+        error "Downloaded script is invalid"
     fi
 
     ### Set execute permissions
