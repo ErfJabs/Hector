@@ -1,0 +1,88 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Cross-compile Go binaries
+        run: |
+          mkdir -p dist
+          ( GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/hector-linux-amd64 . ) &
+          ( GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/hector-linux-arm64 . ) &
+          ( GOOS=linux GOARCH=arm GOARM=7 go build -ldflags="-s -w" -o dist/hector-linux-armv7 . ) &
+          ( GOOS=linux GOARCH=arm GOARM=6 go build -ldflags="-s -w" -o dist/hector-linux-armv6 . ) &
+          wait
+          test -f dist/hector-linux-amd64
+          test -f dist/hector-linux-arm64
+          test -f dist/hector-linux-armv7
+          test -f dist/hector-linux-armv6
+          echo "Built binaries:"
+          ls -lh dist/
+
+      - name: Update release tag
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}-latest"
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          git tag -f "$TAG_NAME"
+          git push -f origin "$TAG_NAME"
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "Release for ${{ github.ref_name }}"
+          body: |
+            Automated build from branch `${{ github.ref_name }}` (commit `${{ github.sha }}`).
+
+            ### Linux Binaries
+            | Architecture | Binary |
+            |-------------|--------|
+            | amd64 | `hector-linux-amd64` |
+            | arm64 | `hector-linux-arm64` |
+            | armv7 | `hector-linux-armv7` |
+            | armv6 | `hector-linux-armv6` |
+
+            Install via:
+            ```bash
+            sudo bash -c "$(curl -sL https://raw.githubusercontent.com/ErfJabs/Hector/master/install.sh)" @ script-install
+            hector install <name> ${{ github.ref_name }}
+            ```
+          files: |
+            dist/hector-linux-amd64
+            dist/hector-linux-arm64
+            dist/hector-linux-armv7
+            dist/hector-linux-armv6
+          prerelease: ${{ github.ref_name != 'master' }}
+          make_latest: ${{ github.ref_name == 'master' }}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <title>Hector</title>
+    <script>
+      // Apply the stored theme before first paint (no dark flash in light mode).
+      try {
+        if (localStorage.getItem('hector.theme') === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light')
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#F7F6F3')
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
