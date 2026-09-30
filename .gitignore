@@ -1,0 +1,18 @@
+# deps / build output
+node_modules/
+frontend/dist/
+dist/
+builds/
+app.exe
+app.run.log
+app.run.err.log
+
+# local secrets
+.env
+
+# local-only docs & reports - never for the public repo
+answer.html
+AGENTS.md
+docs/codebase.md
+
+app.exe~
