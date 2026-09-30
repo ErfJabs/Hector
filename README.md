@@ -1,3 +1,5 @@
+https://github.com/user-attachments/assets/5b54b18a-e1ad-436f-83ea-656eb4f524be
+
 # Hector
 
 A single-admin web panel for the **Hetzner Cloud API**. One Go binary
