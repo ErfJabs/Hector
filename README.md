@@ -20,53 +20,163 @@ a SOCKS5 or HTTP proxy.
 - Go 1.26+
 - Node 20.19+ or 22.12+ (only to build the frontend)
 
-## Setup
+## Install & use
 
-```sh
-git clone https://github.com/ErfJabs/Hector.git && cd Hector
-cp .env.example .env   # then set HCLOUD_TOKEN and ADMIN_PASSWORD
-```
+The panel is installed and managed with the `hector` helper script. Run the
+commands below on your Linux server as **root** (or with `sudo`). Binaries
+come from GitHub releases, so nothing has to be built on the server. The
+examples use the name `mypanel` — pick any name you like.
 
-Key environment variables (see `.env.example` for all of them):
-
-| Variable | Purpose |
-| --- | --- |
-| `HCLOUD_TOKEN` | Hetzner Cloud API token (read + write) |
-| `PROXY_URL` | optional SOCKS5/HTTP proxy for all Hetzner calls |
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the single admin account |
-| `JWT_SECRET` | session signing secret (random when empty) |
-| `API_HOST`, `API_PORT` | bind address (default `0.0.0.0:8787`) |
-
-## Build and run
-
-```sh
-make build
-./app.exe
-```
-
-Or without make:
-
-```sh
-cd frontend && npm install && npm run build
-cd .. && go build -o app.exe . && ./app.exe
-```
-
-Dev loop: run the Go server (`go run .`) and the Vite dev server
-(`make frontend-dev`) which proxies `/api` to `127.0.0.1:8787`.
-
-## Install on a server
-
-Every branch push is built by GitHub Actions and published as a
-`<branch>-latest` release with Linux binaries for amd64, arm64, armv7 and
-armv6 — no build tools needed on the server.
+<details>
+<summary><b>1 · Install the script</b> — one time per server</summary>
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/ErfJabs/Hector/master/install.sh | bash -s script-install
-hector install mypanel master   # name + branch
-hector update mypanel master
-hector list
-hector help                   # all commands
 ```
+
+Downloads the `hector` command to `/usr/local/bin`. From then on you can type
+`hector …` anywhere. Run the same command again anytime to update the script.
+</details>
+
+<details>
+<summary><b>2 · Install the panel</b> — create an instance</summary>
+
+```sh
+hector install mypanel master
+```
+
+This will:
+
+1. create `/opt/erfjab/hector/mypanel`,
+2. download the newest build for your server's CPU,
+3. create a fresh `.env` and open it in **nano** — put your `HCLOUD_TOKEN`
+   in it (create one in the Hetzner console → Security → API tokens, with
+   read + write) and an `ADMIN_PASSWORD`, then save with `Ctrl+O`, `Enter`
+   and close with `Ctrl+X`,
+4. create a systemd service, start the panel and show the live log.
+
+Repeat with another name (`hector install panel-b master`) to run more
+instances on the same server — give each one its own `API_PORT` in its `.env`.
+</details>
+
+<details>
+<summary><b>Start it</b></summary>
+
+```sh
+hector start mypanel
+```
+</details>
+
+<details>
+<summary><b>Stop it</b></summary>
+
+```sh
+hector stop mypanel
+```
+</details>
+
+<details>
+<summary><b>Restart it</b></summary>
+
+```sh
+hector restart mypanel
+```
+</details>
+
+<details>
+<summary><b>Is it running?</b></summary>
+
+```sh
+hector status mypanel
+```
+</details>
+
+<details>
+<summary><b>Read the logs</b></summary>
+
+```sh
+hector logs mypanel
+```
+
+Shows the last 20 lines and keeps following them. For more history first:
+`hector logs mypanel 200`.
+</details>
+
+<details>
+<summary><b>Update it</b> — newest build of the branch</summary>
+
+```sh
+hector update mypanel master
+```
+
+Downloads the newest binary of that branch and swaps it in — your `.env` and
+settings stay as they are, and the service restarts on its own.
+</details>
+
+<details>
+<summary><b>Update everything</b> — all instances at once</summary>
+
+```sh
+hector update-all master
+```
+</details>
+
+<details>
+<summary><b>List all instances</b></summary>
+
+```sh
+hector list
+```
+</details>
+
+<details>
+<summary><b>Find an instance folder</b></summary>
+
+```sh
+hector dir mypanel
+```
+</details>
+
+<details>
+<summary><b>Edit an instance .env</b></summary>
+
+```sh
+hector env mypanel
+```
+
+Opens the file in nano and asks if you want to restart the panel so the
+changes apply.
+</details>
+
+<details>
+<summary><b>Delete an instance</b> — permanently</summary>
+
+```sh
+hector remove mypanel
+```
+
+Stops and disables the service and deletes `/opt/erfjab/hector/mypanel`
+including its `.env`. This cannot be undone.
+</details>
+
+<details>
+<summary><b>Uninstall the script itself</b></summary>
+
+```sh
+hector script-remove
+```
+
+Removes the `hector` command. Instances are untouched — delete them with
+`hector remove <name>` first.
+</details>
+
+<details>
+<summary><b>All commands at a glance</b></summary>
+
+```sh
+hector help
+```
+</details>
 
 ## Community
 
