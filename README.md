@@ -31,7 +31,7 @@ examples use the name `mypanel` — pick any name you like.
 <summary><b>1 · Install the script</b> — one time per server</summary>
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/ErfJabs/Hector/master/install.sh | bash -s script-install
+sudo bash -c "$(curl -sL https://raw.githubusercontent.com/ErfJabs/Hector/master/install.sh)" @ script-install
 ```
 
 Downloads the `hector` command to `/usr/local/bin`. From then on you can type
