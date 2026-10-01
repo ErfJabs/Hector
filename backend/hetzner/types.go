@@ -18,19 +18,19 @@ type Server struct {
 	ServerType ServerType `json:"server_type"`
 	// Location replaced datacenter on the server object; the nested
 	// datacenter is a legacy fallback newer API responses no longer include.
-	Location        Location    `json:"location"`
-	Datacenter      *Datacenter `json:"datacenter"`
-	IncludedTraffic uint64      `json:"included_traffic"`
-	OutgoingTraffic *uint64     `json:"outgoing_traffic"`
-	IngoingTraffic  *uint64     `json:"ingoing_traffic"`
-	BackupWindow    *string     `json:"backup_window"`
-	RescueEnabled   bool        `json:"rescue_enabled"`
-	ISO             *ISO        `json:"iso"`
-	Locked          bool        `json:"locked"`
-	Image           *Image      `json:"image"`
-	Protection      Protection  `json:"protection"`
-	Labels          map[string]string
-	PrimaryDiskSize int `json:"primary_disk_size"`
+	Location        Location          `json:"location"`
+	Datacenter      *Datacenter       `json:"datacenter"`
+	IncludedTraffic uint64            `json:"included_traffic"`
+	OutgoingTraffic *uint64           `json:"outgoing_traffic"`
+	IngoingTraffic  *uint64           `json:"ingoing_traffic"`
+	BackupWindow    *string           `json:"backup_window"`
+	RescueEnabled   bool              `json:"rescue_enabled"`
+	ISO             *ISO              `json:"iso"`
+	Locked          bool              `json:"locked"`
+	Image           *Image            `json:"image"`
+	Protection      Protection        `json:"protection"`
+	Labels          map[string]string `json:"labels"`
+	PrimaryDiskSize int               `json:"primary_disk_size"`
 }
 
 type PublicNet struct {
@@ -138,25 +138,35 @@ type Location struct {
 // ---- image / ssh key ---------------------------------------------------
 
 type Image struct {
-	ID           int64      `json:"id"`
-	Name         string     `json:"name"`
-	Description  string     `json:"description"`
-	Type         string     `json:"type"`
-	Status       string     `json:"status"`
-	OSFlavor     string     `json:"os_flavor"`
-	OSVersion    string     `json:"os_version"`
-	Architecture string     `json:"architecture"`
-	BoundTo      *int64     `json:"bound_to"`
-	ImageSize    *float32   `json:"image_size"`
-	DiskSize     float32    `json:"disk_size"`
-	Deprecated   *time.Time `json:"deprecated"`
+	ID           int64             `json:"id"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	Type         string            `json:"type"`
+	Status       string            `json:"status"`
+	OSFlavor     string            `json:"os_flavor"`
+	OSVersion    string            `json:"os_version"`
+	Architecture string            `json:"architecture"`
+	BoundTo      *int64            `json:"bound_to"`
+	ImageSize    *float32          `json:"image_size"`
+	DiskSize     float32           `json:"disk_size"`
+	Created      *time.Time        `json:"created"`
+	Deprecated   *time.Time        `json:"deprecated"`
+	RapidDeploy  bool              `json:"rapid_deploy"`
+	Labels       map[string]string `json:"labels"`
+	Protection   ImageProtection   `json:"protection"`
+}
+
+type ImageProtection struct {
+	Delete bool `json:"delete"`
 }
 
 type SSHKey struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Fingerprint string `json:"fingerprint"`
-	PublicKey   string `json:"public_key"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Fingerprint string            `json:"fingerprint"`
+	PublicKey   string            `json:"public_key"`
+	Labels      map[string]string `json:"labels"`
+	Created     time.Time         `json:"created"`
 }
 
 // ---- actions -----------------------------------------------------------
@@ -249,4 +259,11 @@ type ServerCreateRequest struct {
 type ServerCreatePublicNet struct {
 	EnableIPv4 bool `json:"enable_ipv4"`
 	EnableIPv6 bool `json:"enable_ipv6"`
+}
+
+// ServerUpdateRequest is the PUT /servers/{id} body. Only the two fields the
+// API accepts are representable — a client cannot smuggle anything else.
+type ServerUpdateRequest struct {
+	Name   string            `json:"name,omitempty"`
+	Labels map[string]string `json:"labels,omitempty"`
 }
