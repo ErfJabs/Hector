@@ -123,36 +123,19 @@ func doResourceAction(ctx context.Context, c *Client, collection string, id int6
 }
 
 // resourceActions lists recent actions for one resource, newest first, and
-// reports how many actions the resource has in total.
+// reports how many actions the resource has in total. Hetzner's sort syntax
+// is "field:direction" — there is no separate sort_order parameter, and
+// omitting it returns the oldest rows first.
 func resourceActions(ctx context.Context, c *Client, collection string, id int64, perPage int) ([]Action, int, error) {
 	q := url.Values{}
 	if perPage > 0 {
 		q.Set("per_page", strconv.Itoa(perPage))
-	} else {
-		q.Set("per_page", "50")
 	}
-	// Hetzner's sort syntax is "field:direction"; a separate sort_order
-	// parameter doesn't exist (it was ignored -> oldest actions first).
 	q.Set("sort", "id:desc")
 
-	var raw map[string]json.RawMessage
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/%s/%d/actions?%s", collection, id, q.Encode()), nil, &raw); err != nil {
+	page, err := listPage[Action](ctx, c, fmt.Sprintf("/%s/%d/actions", collection, id), "actions", q)
+	if err != nil {
 		return nil, 0, err
 	}
-	var meta struct {
-		Pagination struct {
-			TotalEntries int `json:"total_entries"`
-		} `json:"pagination"`
-	}
-	if err := json.Unmarshal(raw["meta"], &meta); err != nil {
-		return nil, 0, err
-	}
-	var actions []Action
-	if err := json.Unmarshal(raw["actions"], &actions); err != nil {
-		return nil, 0, fmt.Errorf("decode actions: %w", err)
-	}
-	if actions == nil {
-		actions = []Action{}
-	}
-	return actions, meta.Pagination.TotalEntries, nil
+	return page.Items, page.Total, nil
 }
