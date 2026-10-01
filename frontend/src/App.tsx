@@ -8,6 +8,18 @@ import ServerDetail from './screens/ServerDetail'
 import Rescale from './screens/Rescale'
 import NewServer from './screens/NewServer'
 import Created from './screens/Created'
+import Storage from './screens/resources/Storage'
+import ImagesScreen from './screens/resources/Images'
+import NetworkScreen from './screens/resources/Network'
+import FirewallsScreen from './screens/resources/Firewalls'
+import { FloatingIPsScreen, PrimaryIPsScreen } from './screens/resources/Addresses'
+import LoadBalancersScreen from './screens/resources/LoadBalancers'
+import { CertificatesScreen, SSHKeysScreen } from './screens/resources/Access'
+import PlacementScreen from './screens/resources/Placement'
+import ActivityScreen from './screens/resources/Activity'
+
+/** Every new section is one route here and one SECTIONS entry in section.tsx. */
+const guarded = (el: React.ReactNode) => <RequireAuth>{el}</RequireAuth>
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!session.get()) return <Navigate to="/signin" replace />
@@ -97,6 +109,17 @@ export default function App() {
           </RequireAuth>
         }
       />
+      <Route path="/storage" element={guarded(<Storage />)} />
+      <Route path="/images" element={guarded(<ImagesScreen />)} />
+      <Route path="/network" element={guarded(<NetworkScreen />)} />
+      <Route path="/network/firewalls" element={guarded(<FirewallsScreen />)} />
+      <Route path="/addresses" element={guarded(<FloatingIPsScreen />)} />
+      <Route path="/addresses/primary" element={guarded(<PrimaryIPsScreen />)} />
+      <Route path="/load-balancers" element={guarded(<LoadBalancersScreen />)} />
+      <Route path="/access" element={guarded(<SSHKeysScreen />)} />
+      <Route path="/access/certificates" element={guarded(<CertificatesScreen />)} />
+      <Route path="/placement-groups" element={guarded(<PlacementScreen />)} />
+      <Route path="/activity" element={guarded(<ActivityScreen />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </ErrorBoundary>
