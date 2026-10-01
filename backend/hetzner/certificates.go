@@ -172,6 +172,11 @@ type ImageUpdateRequest struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 }
 
+// ImageUpdate rewrites an image's description and labels.
+func (c *Client) ImageUpdate(ctx context.Context, id int64, body ImageUpdateRequest) (*Image, error) {
+	return updateResource[Image](ctx, c, "images", id, body, "image")
+}
+
 // ImageDelete deletes an image. DELETE /images/{id} answers with an empty
 // body (there is no action to poll).
 func (c *Client) ImageDelete(ctx context.Context, id int64) error {

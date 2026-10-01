@@ -26,13 +26,13 @@ type Volume struct {
 }
 
 type VolumeCreateRequest struct {
-	Name      string             `json:"name"`
-	Size      int                `json:"size"`
-	Server    *int64             `json:"server,omitempty"`
-	Location  *IDOrName          `json:"location,omitempty"`
-	Labels    *map[string]string `json:"labels,omitempty"`
-	Automount *bool              `json:"automount,omitempty"`
-	Format    *string            `json:"format,omitempty"`
+	Name      string            `json:"name"`
+	Size      int               `json:"size"`
+	Server    *int64            `json:"server,omitempty"`
+	Location  *IDOrName         `json:"location,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	Automount *bool             `json:"automount,omitempty"`
+	Format    *string           `json:"format,omitempty"`
 }
 
 type VolumeCreateResponse struct {
