@@ -33,6 +33,10 @@ export function Overlay({
     // not the server sheet underneath as well.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      // Only the top-most layer may close: a nested picker sits above the
+      // detail sheet, a confirm dialog above that. DOM order is paint order.
+      const dialogs = document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]')
+      if (dialogs.length > 0 && dialogs[dialogs.length - 1] !== panel.current) return
       e.stopPropagation()
       closeRef.current()
     }

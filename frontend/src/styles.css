@@ -249,3 +249,38 @@ body.modal-open{user-select:none;-webkit-user-select:none}
 body.modal-open [role="dialog"][aria-modal="true"]{user-select:text;-webkit-user-select:text}
 button,.btn,.chip,.tab,.sw,.tile,.bkc,[style*="crosshair"]{user-select:none;-webkit-user-select:none}
 .dock{padding-bottom:calc(24px + env(safe-area-inset-bottom)) !important}
+
+/* ---- grouped section navigation ----
+   Nine sections in four groups. Desktop puts the group tag in front of the
+   links; phones drop the tags and scroll one rail. */
+.navbar{display:flex;align-items:stretch;height:46px;border-bottom:1px solid var(--line);padding:0 40px}
+.navrail{display:flex;align-items:stretch;height:44px;border-bottom:1px solid var(--line);padding:0 4px}
+.navgroup{display:flex;align-items:stretch;padding-right:18px;border-right:1px solid var(--line)}
+.navgroup+.navgroup{padding-left:18px}
+.navgroup:last-child{border-right:0;padding-right:0}
+.navtag{align-self:center;font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--t4);margin-right:10px;white-space:nowrap}
+.navlink{display:inline-flex;align-items:center;height:100%;padding:0 11px;font-family:'Geist Mono',monospace;font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--t3);text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap}
+.navlink:hover{color:var(--t2)}
+.navlink-on{color:var(--fg);border-bottom-color:var(--accent)}
+.navrail .navgroup{padding-right:8px}
+.navrail .navgroup+.navgroup{padding-left:8px}
+.navrail .navtag{display:none}
+.navrail .navlink{padding:0 10px;font-size:10.5px}
+
+/* ---- resource list table ---- */
+.tbl{display:grid;align-items:center;gap:16px;padding:0 16px}
+.tbl-h{height:36px;border-bottom:1px solid var(--line);font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--t4)}
+.tbl-r{min-height:58px;border-bottom:1px solid var(--line-row);width:100%;text-align:left;background:transparent;border-left:0;border-right:0;border-top:0;color:inherit;font:inherit;cursor:pointer;padding-top:10px;padding-bottom:10px}
+.tbl-r:hover{background:var(--card)}
+.tbl-r[disabled]{cursor:default}
+.tbl-r[disabled]:hover{background:transparent}
+.cell-ov{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-r{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);color:inherit;font:inherit;cursor:pointer;padding:14px}
+.field select{flex:1;background:transparent;border:0;outline:0;font-size:16px;min-width:0;padding:0;color:var(--fg);cursor:pointer}
+.field select option{background:var(--card);color:var(--fg)}
+
+/* long text input: public keys, PEM blobs, rule sets */
+.field-ta{border:1px solid var(--line2);background:var(--field);display:flex;padding:10px 12px;transition:border-color .12s}
+.field-ta:focus-within{border-color:var(--ctrl)}
+.field-ta textarea{flex:1;background:transparent;border:0;outline:0;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:1.5;resize:vertical;min-height:104px;color:var(--fg);padding:0}
+.field-ta textarea::placeholder{color:var(--t4)}

@@ -7,6 +7,7 @@ import { API, session, takeFleetDirty } from '../api'
 import { useAsync, useIsDesktop, useOnChanged } from '../hooks'
 import { Ic } from '../icons'
 import { TopBar } from '../components/topbar'
+import { SectionNav } from '../components/section'
 import { agoLabel, Blocks, Meter } from '../components/charts'
 import { EmptyFleet, ErrorPanel, SkeletonFleet } from '../components/states'
 import { euro, flags, maskIp, metaLine, pct, specLine, statusShape, tb } from '../format'
@@ -174,6 +175,7 @@ export default function Servers() {
   return (
     <div className={desktop ? 'page page--d' : 'page'}>
       <TopBar onRefresh={refresh} onSignOut={signOut} />
+      <SectionNav />
       {content}
     </div>
   )

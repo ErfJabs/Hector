@@ -25,8 +25,9 @@ interface ToastAPI {
   push: (t: Partial<ToastItem> & { title: string }) => number
   update: (id: number, patch: Partial<ToastItem>) => void
   dismiss: (id: number) => void
-  /** Track a running Hetzner action until it finishes. */
-  trackAction: (title: string, action: ActionResult['action']) => void
+  /** Track a running Hetzner action until it finishes. `notify` replaces the
+   *  fleet-wide resync on settle — a volume action must not rebuild the fleet. */
+  trackAction: (title: string, action: ActionResult['action'], notify?: () => void) => void
   /** Track a multi-step backend job (rescale). */
   trackJob: (serverId: number, title: string, job: Job) => void
   runTracked: (title: string, promise: Promise<ActionResult>) => Promise<ActionResult | null>
@@ -80,8 +81,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const settle = useCallback(
-    (id: number, ok: boolean, durationS: number, errorCode: string, errorMessage: string) => {
-      notifyChanged() // the server's state moved on: list + detail resync
+    (id: number, ok: boolean, durationS: number, errorCode: string, errorMessage: string, notify: () => void = notifyChanged) => {
+      notify() // the resource's state moved on: list + detail resync
       if (ok) {
         update(id, { kind: 'success', progress: 100, tag: durationS > 0 ? `${durationS} s` : '' })
         window.setTimeout(() => dismiss(id), DONE_MS)
@@ -97,10 +98,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   )
 
   const trackAction = useCallback(
-    (title: string, action: ActionResult['action']) => {
+    (title: string, action: ActionResult['action'], notify: () => void = notifyChanged) => {
       const id = push({ kind: 'progress', title, progress: action.progress, tag: `${action.progress}%` })
       if (action.status !== 'running') {
-        settle(id, action.status === 'success', action.durationS, action.errorCode, action.errorMessage)
+        settle(id, action.status === 'success', action.durationS, action.errorCode, action.errorMessage, notify)
         return
       }
       void (async () => {
@@ -112,12 +113,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             failures = 0
             update(id, { progress: a.progress, tag: `${a.progress}%` })
             if (a.status !== 'running') {
-              settle(id, a.status === 'success', a.durationS, a.errorCode, a.errorMessage)
+              settle(id, a.status === 'success', a.durationS, a.errorCode, a.errorMessage, notify)
               return
             }
           } catch (err) {
             if (fatal(err) || ++failures >= MAX_POLL_FAILURES) {
-              settle(id, false, 0, 'unknown', 'lost track of this action — check the server')
+              settle(id, false, 0, 'unknown', 'lost track of this action — check the server', notify)
               return
             }
           }
