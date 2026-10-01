@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -182,6 +183,11 @@ func datacenterName(s hetzner.Server) string {
 // cpuForServers fetches the last-hour CPU series for running servers, in
 // parallel, tolerating per-server failures (a card without a chart beats a
 // failed list).
+//
+// The sparklines are decoration, so they are the first thing to give up when
+// the token is close to its hourly Hetzner quota: one fleet rebuild costs
+// 1 + N requests, and burning the window would starve every mutation in the
+// panel (429 on rename/power/delete).
 func cpuForServers(ctx context.Context, servers []hetzner.Server) map[int64]*types.CPUInfo {
 	out := map[int64]*types.CPUInfo{}
 	var mu sync.Mutex
@@ -190,10 +196,23 @@ func cpuForServers(ctx context.Context, servers []hetzner.Server) map[int64]*typ
 	now := time.Now().UTC()
 	sem := make(chan struct{}, 4)
 
+	var want []hetzner.Server
 	for _, s := range servers {
-		if s.Status != "running" {
-			continue
+		if s.Status == "running" {
+			want = append(want, s)
 		}
+	}
+	if len(want) == 0 {
+		return out
+	}
+	// +1 for the listing request this fleet build still has to pay for, +5 slack
+	if !hcloud.RateLimit().Enough(len(want) + 6) {
+		log.Printf("[hetzner] quota guard: skipping %d CPU sparklines (rate limit %d/%d left)",
+			len(want), hcloud.RateLimit().Remaining, hcloud.RateLimit().Limit)
+		return out
+	}
+
+	for _, s := range want {
 		wg.Add(1)
 		go func(s hetzner.Server) {
 			defer wg.Done()
