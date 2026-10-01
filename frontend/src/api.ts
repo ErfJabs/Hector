@@ -1,5 +1,7 @@
 import type {
-  ActionResult, Catalog, CreateRequest, CreateResult, Fleet, Job, MetricsView, ServerDetail,
+  Activity, ActionResult, Certificate, Catalog, CreateRequest, CreateResult, Fleet, FloatingIP,
+  Firewall, Image, Job, LoadBalancer, MetricsView, Network, PlacementGroup, PrimaryIP, ServerDetail,
+  SSHKey, Volume,
 } from './types'
 
 const TOKEN_KEY = 'hector.token'
@@ -41,6 +43,14 @@ export function notifyChanged() {
   cache.expire('fleet')
   cache.expire('server:')
   cache.expire('snapshots:')
+  window.dispatchEvent(new Event('hector:changed'))
+}
+
+/** A resource outside the fleet changed (volume, firewall, key...): drop its
+ *  cached list and tell open screens to reload — but never force the fleet
+ *  to rebuild, which would cost 1 + N Hetzner requests. */
+export function notifyResource(prefix: string) {
+  cache.expire(prefix)
   window.dispatchEvent(new Event('hector:changed'))
 }
 
@@ -156,4 +166,129 @@ export const API = {
     api<Job>('POST', `/api/servers/${id}/rescale`, { serverType, upgradeDisk }),
 
   job: (id: number) => api<Job | null>('GET', `/api/servers/${id}/job`),
+}
+
+// ---- resource sections -------------------------------------------------
+//
+// Every collection follows the same shape: a list read, a create, a rename/
+// relabel PUT, a DELETE and a POST to /{collection}/{id}/actions/{action}.
+// The action endpoints answer with ActionResult so the shared toast tracker
+// can follow them — including the multi-row firewall answers, which put every
+// row in `actions`.
+
+export const Volumes = {
+  list: () => api<Volume[]>('GET', '/api/volumes'),
+  get: (id: number) => api<Volume>('GET', `/api/volumes/${id}`),
+  create: (body: unknown) =>
+    api<{ volume: Volume; action: ActionResult }>('POST', '/api/volumes', body),
+  update: (id: number, body: unknown) => api<Volume>('PUT', `/api/volumes/${id}`, body),
+  remove: (id: number) => api<ActionResult>('DELETE', `/api/volumes/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/volumes/${id}/actions/${action}`, body ?? {}),
+}
+
+export const Networks = {
+  list: () => api<Network[]>('GET', '/api/networks'),
+  get: (id: number) =>
+    api<{ network: Network; members: unknown[] }>('GET', `/api/networks/${id}`),
+  create: (body: unknown) =>
+    api<{ network: Network }>('POST', '/api/networks', body),
+  update: (id: number, body: unknown) => api<Network>('PUT', `/api/networks/${id}`, body),
+  remove: (id: number) => api<ActionResult>('DELETE', `/api/networks/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/networks/${id}/actions/${action}`, body ?? {}),
+}
+
+export const Firewalls = {
+  list: () => api<Firewall[]>('GET', '/api/firewalls'),
+  get: (id: number) => api<Firewall>('GET', `/api/firewalls/${id}`),
+  create: (body: unknown) =>
+    api<{ firewall: Firewall; action: ActionResult }>('POST', '/api/firewalls', body),
+  update: (id: number, body: unknown) => api<Firewall>('PUT', `/api/firewalls/${id}`, body),
+  remove: (id: number) => api<void>('DELETE', `/api/firewalls/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/firewalls/${id}/actions/${action}`, body ?? {}),
+}
+
+export const FloatingIPs = {
+  list: () => api<FloatingIP[]>('GET', '/api/floating-ips'),
+  get: (id: number) => api<FloatingIP>('GET', `/api/floating-ips/${id}`),
+  create: (body: unknown) =>
+    api<{ floatingIp: FloatingIP; action: ActionResult }>('POST', '/api/floating-ips', body),
+  update: (id: number, body: unknown) => api<FloatingIP>('PUT', `/api/floating-ips/${id}`, body),
+  remove: (id: number) => api<ActionResult>('DELETE', `/api/floating-ips/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/floating-ips/${id}/actions/${action}`, body ?? {}),
+}
+
+export const PrimaryIPs = {
+  list: () => api<PrimaryIP[]>('GET', '/api/primary-ips'),
+  get: (id: number) => api<PrimaryIP>('GET', `/api/primary-ips/${id}`),
+  create: (body: unknown) =>
+    api<{ primaryIp: PrimaryIP; action: ActionResult }>('POST', '/api/primary-ips', body),
+  update: (id: number, body: unknown) => api<PrimaryIP>('PUT', `/api/primary-ips/${id}`, body),
+  remove: (id: number) => api<ActionResult>('DELETE', `/api/primary-ips/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/primary-ips/${id}/actions/${action}`, body ?? {}),
+}
+
+export const LoadBalancers = {
+  list: () => api<LoadBalancer[]>('GET', '/api/load-balancers'),
+  get: (id: number) => api<LoadBalancer>('GET', `/api/load-balancers/${id}`),
+  create: (body: unknown) =>
+    api<{ loadBalancer: LoadBalancer; action: ActionResult }>('POST', '/api/load-balancers', body),
+  update: (id: number, body: unknown) => api<LoadBalancer>('PUT', `/api/load-balancers/${id}`, body),
+  remove: (id: number) => api<ActionResult>('DELETE', `/api/load-balancers/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/load-balancers/${id}/actions/${action}`, body ?? {}),
+}
+
+export const PlacementGroups = {
+  list: () => api<PlacementGroup[]>('GET', '/api/placement-groups'),
+  create: (body: unknown) => api<{ placementGroup: PlacementGroup }>('POST', '/api/placement-groups', body),
+  update: (id: number, body: unknown) => api<PlacementGroup>('PUT', `/api/placement-groups/${id}`, body),
+  remove: (id: number) => api<void>('DELETE', `/api/placement-groups/${id}`),
+}
+
+export const Certificates = {
+  list: () => api<Certificate[]>('GET', '/api/certificates'),
+  create: (body: unknown) =>
+    api<{ certificate: Certificate; action: ActionResult }>('POST', '/api/certificates', body),
+  update: (id: number, body: unknown) => api<Certificate>('PUT', `/api/certificates/${id}`, body),
+  remove: (id: number) => api<void>('DELETE', `/api/certificates/${id}`),
+  retry: (id: number) => api<ActionResult>('POST', `/api/certificates/${id}/retry`),
+}
+
+export const SSHKeys = {
+  list: () => api<SSHKey[]>('GET', '/api/ssh-keys'),
+  create: (body: unknown) => api<{ sshKey: SSHKey }>('POST', '/api/ssh-keys', body),
+  update: (id: number, body: unknown) => api<SSHKey>('PUT', `/api/ssh-keys/${id}`, body),
+  remove: (id: number) => api<void>('DELETE', `/api/ssh-keys/${id}`),
+}
+
+export interface ImageQuery {
+  type?: string
+  status?: string
+  name?: string
+  arch?: string
+}
+
+export const Images = {
+  list: (q: ImageQuery = {}) => {
+    const params = new URLSearchParams()
+    if (q.type) params.set('type', q.type)
+    if (q.status) params.set('status', q.status)
+    if (q.name) params.set('name', q.name)
+    if (q.arch) params.set('arch', q.arch)
+    const qs = params.toString()
+    return api<Image[]>('GET', `/api/images${qs ? `?${qs}` : ''}`)
+  },
+  update: (id: number, body: unknown) => api<Image>('PUT', `/api/images/${id}`, body),
+  remove: (id: number) => api<void>('DELETE', `/api/images/${id}`),
+  act: (id: number, action: string, body?: unknown) =>
+    api<ActionResult>('POST', `/api/images/${id}/actions/${action}`, body ?? {}),
+}
+
+export const ActivityFeed = {
+  get: () => api<Activity>('GET', '/api/activity'),
 }
