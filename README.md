@@ -13,7 +13,14 @@ a SOCKS5 or HTTP proxy.
 - power actions, rebuild, rescue, ISO / snapshot management
 - rescale with background jobs and progress
 - metrics charts (CPU, disk, network)
-- networks, firewalls and SSH keys
+- grouped resource sections with full CRUD and actions:
+  - **compute** — volumes (attach / detach / resize), images (rename, protect)
+  - **network** — private networks (subnets, routes), firewalls (rules,
+    apply / unapply), load balancers (targets, algorithm, public interface)
+  - **addresses** — floating and primary IPs (assign, reverse DNS, protection)
+  - **platform** — SSH keys, certificates, placement groups
+  - **system** — a project-wide activity feed of every running / finished action
+- rate-limit aware Hetzner client (429 + `Retry-After`, quota readout)
 - pricing / catalog helpers for picking a server
 - single admin login (JWT session), dark "Red Grid" UI, mobile + desktop
 
@@ -179,6 +186,22 @@ Removes the `hector` command. Instances are untouched — delete them with
 hector help
 ```
 </details>
+
+## Development
+
+```sh
+make frontend      # React -> frontend/dist (must exist before any go build)
+make vet           # go vet ./...
+make test          # go test ./...
+make dev           # build the frontend once, then go run .
+make frontend-dev  # Vite on :5173, /api proxied to :8787
+```
+
+The route table in `backend/transport/api/routes/routes.go` is the
+authoritative API surface and `routes_test.go` pins it — a new endpoint
+without a test fails the suite. Layering is strict: `backend/hetzner`
+(client) → `backend/services` (cache + business rules) → `handlers` →
+`routes` → React. There is no database.
 
 ## Community
 
