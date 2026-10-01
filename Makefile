@@ -1,4 +1,4 @@
-.PHONY: help frontend build run dev frontend-dev release clean
+.PHONY: help frontend build run dev frontend-dev release clean vet test
 
 # The cross-compile targets need a POSIX shell for the inline GOOS=...
 # variables, and Windows make runs simple recipe lines WITHOUT one — so the
@@ -31,6 +31,18 @@ dev: frontend
 frontend-dev:
 	cd frontend && npm run dev
 
+# Static checks and the Go test suite. Both compile the embed directive, so
+# frontend/dist has to exist; the file target builds it only when missing
+# (a full npm build on every `make test` would be wasted work).
+frontend/dist/index.html:
+	cd frontend && npm run build
+
+vet: frontend/dist/index.html
+	go vet ./...
+
+test: frontend/dist/index.html
+	go test ./...
+
 # ─── Release / CI targets ───
 
 # Cross-compile release binaries for all supported Linux architectures.
@@ -42,4 +54,4 @@ clean:
 	rm -rf app.exe frontend/dist dist
 
 help:
-	@echo "targets: frontend | build | run | dev | frontend-dev | release | clean"
+	@echo "targets: frontend | build | run | dev | frontend-dev | vet | test | release | clean"

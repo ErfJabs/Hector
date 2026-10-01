@@ -36,6 +36,11 @@ jobs:
           npm ci
           npm run build
 
+      - name: Vet and test backend
+        run: |
+          go vet ./...
+          go test ./...
+
       - name: Cross-compile Go binaries
         run: |
           mkdir -p dist
