@@ -125,7 +125,18 @@ func serverExtras(ctx context.Context, s hetzner.Server) *types.MetricsExtras {
 
 // ServerRename renames a server (PUT /servers/{id}).
 func ServerRename(ctx context.Context, id int64, name string) (*types.ServerDetail, error) {
-	if _, err := hcloud.ServerUpdate(ctx, id, name); err != nil {
+	if _, err := hcloud.ServerUpdate(ctx, id, hetzner.ServerUpdateRequest{Name: name}); err != nil {
+		return nil, err
+	}
+	return Server(ctx, id)
+}
+
+// ServerLabels replaces the labels of a server (PUT /servers/{id}).
+func ServerLabels(ctx context.Context, id int64, labels map[string]string) (*types.ServerDetail, error) {
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	if _, err := hcloud.ServerUpdate(ctx, id, hetzner.ServerUpdateRequest{Labels: labels}); err != nil {
 		return nil, err
 	}
 	return Server(ctx, id)
