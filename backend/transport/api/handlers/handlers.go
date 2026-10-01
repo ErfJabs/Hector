@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -18,15 +19,27 @@ import (
 //   - "token_missing"    -> HCLOUD_TOKEN is not configured
 //   - "proxy"            -> the configured proxy (PROXY_URL) did not get through
 //   - "unreachable"      -> api.hetzner.cloud did not answer
+//   - "rate_limited"     -> Hetzner quota (429); Retry-After says when to retry
+//   - "not_allowed"      -> the requested Hetzner action is not exposed for this resource
 func fail(c *fiber.Ctx, err error) error {
 	status := fiber.StatusInternalServerError
 	code := ""
+	retryAfter := ""
 
 	var apiErr *hetzner.APIError
+	var rateErr *hetzner.RateLimitedError
 	var urlErr *url.Error
 	var netErr net.Error
 
 	switch {
+	case errors.As(err, &rateErr):
+		// Hetzner's hourly token quota: 503 + Retry-After so clients back off
+		// instead of hammering a window that is already empty.
+		status = fiber.StatusServiceUnavailable
+		code = "rate_limited"
+		if d := rateErr.RetryAfter(); d > 0 {
+			retryAfter = strconv.Itoa(int(d.Seconds()))
+		}
 	case errors.As(err, &apiErr):
 		status = apiErr.Status
 		code = apiErr.Code
@@ -47,6 +60,9 @@ func fail(c *fiber.Ctx, err error) error {
 		}
 	}
 
+	if retryAfter != "" {
+		c.Set(fiber.HeaderRetryAfter, retryAfter)
+	}
 	return c.Status(status).JSON(fiber.Map{
 		"message": err.Error(),
 		"code":    code,
