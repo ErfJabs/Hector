@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -36,6 +37,59 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("hetzner %d: %s", e.Status, e.Message)
 }
 
+// RateLimit is the token quota as reported by Hetzner's Ratelimit-* response
+// headers (3600 requests/hour by default). A zero Limit means "no header seen
+// yet" — callers must then assume the quota is fine rather than block work.
+type RateLimit struct {
+	Limit     int       `json:"limit"`     // requests per window, 0 = unknown
+	Remaining int       `json:"remaining"` // requests left in this window
+	Reset     time.Time `json:"reset"`     // when the window refills
+}
+
+// Enough reports whether spending n more requests right now looks safe. It is
+// deliberately pessimistic only after a header has proven the limit exists, so
+// a mock backend without quota headers never disables anything.
+func (r RateLimit) Enough(n int) bool {
+	if r.Limit <= 0 {
+		return true
+	}
+	if r.Remaining <= 0 {
+		return false
+	}
+	return r.Remaining >= n
+}
+
+// RateLimitedError is returned when Hetzner answers 429. Reset is when the
+// quota window refills (from Ratelimit-Reset or Retry-After).
+type RateLimitedError struct {
+	Reset time.Time
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.Reset.IsZero() {
+		return "hetzner rate limit exceeded"
+	}
+	return fmt.Sprintf("hetzner rate limit exceeded until %s", e.Reset.UTC().Format(time.RFC3339))
+}
+
+// RetryAfter is how long the caller should wait, never negative, always a
+// whole second (so the Retry-After header is never "0" while still waiting)
+// and never more than an hour — a reset that far out is not worth blocking on.
+func (e *RateLimitedError) RetryAfter() time.Duration {
+	d := time.Until(e.Reset)
+	if d <= 0 {
+		return 0
+	}
+	secs := int64(d / time.Second)
+	if d%time.Second != 0 {
+		secs++
+	}
+	if secs > 3600 {
+		secs = 3600
+	}
+	return time.Duration(secs) * time.Second
+}
+
 // Client talks to the Hetzner Cloud API.
 type Client struct {
 	http       *http.Client
@@ -43,6 +97,57 @@ type Client struct {
 	baseURL    string
 	proxyAddr  string // host:port of the proxy, "" = direct
 	proxyLabel string // scheme://host:port [(auth)] — safe to log
+
+	// quota holds the newest Ratelimit-* snapshot; written from the response
+	// path of every request, read by the services layer before spending a
+	// batch of calls. atomic.Pointer keeps the read path lock-free.
+	quota atomic.Pointer[RateLimit]
+}
+
+// RateLimit returns the latest quota snapshot (zero value when none was ever
+// received). Safe for concurrent use.
+func (c *Client) RateLimit() RateLimit {
+	if v := c.quota.Load(); v != nil {
+		return *v
+	}
+	return RateLimit{}
+}
+
+// observeQuota records the Ratelimit-* headers of a response. Missing headers
+// leave the previous snapshot in place.
+func (c *Client) observeQuota(res *http.Response) {
+	limit, _ := strconv.Atoi(res.Header.Get("Ratelimit-Limit"))
+	remaining, _ := strconv.Atoi(res.Header.Get("Ratelimit-Remaining"))
+	if limit <= 0 && remaining <= 0 {
+		return
+	}
+	rl := RateLimit{Limit: limit, Remaining: remaining}
+	if ts, err := strconv.ParseInt(res.Header.Get("Ratelimit-Reset"), 10, 64); err == nil && ts > 0 {
+		rl.Reset = time.Unix(ts, 0)
+	} else if ra, err := strconv.Atoi(res.Header.Get("Retry-After")); err == nil && ra > 0 {
+		rl.Reset = time.Now().Add(time.Duration(ra) * time.Second)
+	}
+	// keep the previous Reset when this response carried neither header
+	if rl.Reset.IsZero() {
+		if prev := c.quota.Load(); prev != nil {
+			rl.Reset = prev.Reset
+		}
+	}
+	c.quota.Store(&rl)
+}
+
+// retryAfterFrom builds a RateLimitedError from a 429 response.
+func retryAfterFrom(res *http.Response) *RateLimitedError {
+	e := &RateLimitedError{}
+	if ts, err := strconv.ParseInt(res.Header.Get("Ratelimit-Reset"), 10, 64); err == nil && ts > 0 {
+		e.Reset = time.Unix(ts, 0)
+		return e
+	}
+	if ra, err := strconv.Atoi(res.Header.Get("Retry-After")); err == nil && ra > 0 {
+		e.Reset = time.Now().Add(time.Duration(ra) * time.Second)
+		return e
+	}
+	return e
 }
 
 // ParseProxy reads PROXY_URL. Accepted:
@@ -137,6 +242,7 @@ func New(token, proxyURL, baseURL string) (*Client, error) {
 		u, _ := ParseProxy(proxyURL)
 		c.proxyAddr = u.Host
 	}
+	// no snapshot yet: RateLimit() reports the zero value and Enough() says yes
 	return c, nil
 }
 
@@ -253,9 +359,17 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	}
 	defer res.Body.Close()
 
+	c.observeQuota(res)
+
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	if err != nil {
 		return err
+	}
+
+	// 429 is not a Hetzner error envelope: it is a quota signal, and callers
+	// (handlers) need the reset time to answer with Retry-After.
+	if res.StatusCode == http.StatusTooManyRequests {
+		return retryAfterFrom(res)
 	}
 
 	if res.StatusCode >= 400 {
@@ -325,172 +439,54 @@ func listAll[T any](ctx context.Context, c *Client, path, key string, q url.Valu
 	}
 }
 
-// ---- servers -----------------------------------------------------------
-
-func (c *Client) Servers(ctx context.Context) ([]Server, error) {
-	return listAll[Server](ctx, c, "/servers", "servers", nil)
+// Page is a single page of a collection, with the pagination Hetzner reported.
+type Page[T any] struct {
+	Items   []T `json:"items"`
+	Page    int `json:"page"`
+	PerPage int `json:"perPage"`
+	Total   int `json:"total"`
 }
 
-func (c *Client) Server(ctx context.Context, id int64) (*Server, error) {
-	var res struct {
-		Server Server `json:"server"`
+// listPage fetches exactly one page instead of walking the whole collection.
+// Used where the API can hold far more rows than the UI should download in one
+// request (the activity feed). q keys page/per_page are respected.
+func listPage[T any](ctx context.Context, c *Client, path, key string, q url.Values) (*Page[T], error) {
+	if q == nil {
+		q = url.Values{}
 	}
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/servers/%d", id), nil, &res); err != nil {
-		return nil, err
+	if q.Get("per_page") == "" {
+		q.Set("per_page", "50")
 	}
-	return &res.Server, nil
-}
-
-func (c *Client) ServerCreate(ctx context.Context, req ServerCreateRequest) (*ServerCreateResponse, error) {
-	var res ServerCreateResponse
-	if err := c.do(ctx, http.MethodPost, "/servers", req, &res); err != nil {
-		return nil, err
+	if q.Get("page") == "" {
+		q.Set("page", "1")
 	}
-	return &res, nil
-}
-
-func (c *Client) ServerUpdate(ctx context.Context, id int64, name string) (*Server, error) {
-	var res struct {
-		Server Server `json:"server"`
-	}
-	if err := c.do(ctx, http.MethodPut, fmt.Sprintf("/servers/%d", id), map[string]string{"name": name}, &res); err != nil {
-		return nil, err
-	}
-	return &res.Server, nil
-}
-
-func (c *Client) ServerDelete(ctx context.Context, id int64) (*Action, error) {
-	var res struct {
-		Action Action `json:"action"`
-	}
-	if err := c.do(ctx, http.MethodDelete, fmt.Sprintf("/servers/%d", id), nil, &res); err != nil {
-		return nil, err
-	}
-	return &res.Action, nil
-}
-
-// ActionResponse is what POST /servers/{id}/actions/{name} can return.
-// Most actions fill only Action; rebuild, enable_rescue and reset_password
-// can add RootPassword.
-type ActionResponse struct {
-	Action       Action  `json:"action"`
-	RootPassword *string `json:"root_password"`
-}
-
-// DoServerAction posts to /servers/{id}/actions/{name}. payload may be nil.
-func (c *Client) DoServerAction(ctx context.Context, id int64, name string, payload any) (*ActionResponse, error) {
-	var res ActionResponse
-	if err := c.do(ctx, http.MethodPost, fmt.Sprintf("/servers/%d/actions/%s", id, name), payload, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
-}
-
-// ServerActions lists recent actions for one server, newest first, and
-// reports how many actions the server has in total.
-func (c *Client) ServerActions(ctx context.Context, id int64, perPage int) ([]Action, int, error) {
-	q := url.Values{}
-	q.Set("per_page", strconv.Itoa(perPage))
-	// Hetzner's sort syntax is "field:direction"; a separate sort_order
-	// parameter doesn't exist (it was ignored → oldest actions first).
-	q.Set("sort", "id:desc")
 
 	var raw map[string]json.RawMessage
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/servers/%d/actions?%s", id, q.Encode()), nil, &raw); err != nil {
-		return nil, 0, err
+	if err := c.do(ctx, http.MethodGet, path+"?"+q.Encode(), nil, &raw); err != nil {
+		return nil, err
 	}
+
 	var meta struct {
 		Pagination struct {
+			Page         int `json:"page"`
+			PerPage      int `json:"per_page"`
 			TotalEntries int `json:"total_entries"`
 		} `json:"pagination"`
 	}
 	if err := json.Unmarshal(raw["meta"], &meta); err != nil {
-		return nil, 0, err
-	}
-	var actions []Action
-	if err := json.Unmarshal(raw["actions"], &actions); err != nil {
-		return nil, 0, fmt.Errorf("decode actions: %w", err)
-	}
-	return actions, meta.Pagination.TotalEntries, nil
-}
-
-// RunningActions lists actions currently running for the whole project.
-func (c *Client) RunningActions(ctx context.Context) ([]Action, error) {
-	q := url.Values{}
-	q.Set("status", "running")
-	q.Set("per_page", "50")
-	return listAll[Action](ctx, c, "/actions", "actions", q)
-}
-
-func (c *Client) Action(ctx context.Context, id int64) (*Action, error) {
-	var res struct {
-		Action Action `json:"action"`
-	}
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/actions/%d", id), nil, &res); err != nil {
 		return nil, err
 	}
-	return &res.Action, nil
-}
-
-// ---- metrics -----------------------------------------------------------
-
-// ServerMetrics fetches metrics for one server. types is a list of
-// "cpu", "disk", "network" (repeatable query parameter).
-func (c *Client) ServerMetrics(ctx context.Context, id int64, types []string, start, end time.Time, step int) (*Metrics, error) {
-	q := url.Values{}
-	for _, t := range types {
-		q.Add("type", t)
+	var items []T
+	if err := json.Unmarshal(raw[key], &items); err != nil {
+		return nil, fmt.Errorf("decode %s items: %w", key, err)
 	}
-	q.Set("start", start.UTC().Format(time.RFC3339))
-	q.Set("end", end.UTC().Format(time.RFC3339))
-	if step > 0 {
-		q.Set("step", strconv.Itoa(step))
+	if items == nil {
+		items = []T{}
 	}
-	var res struct {
-		Metrics Metrics `json:"metrics"`
-	}
-	if err := c.do(ctx, http.MethodGet, fmt.Sprintf("/servers/%d/metrics?%s", id, q.Encode()), nil, &res); err != nil {
-		return nil, err
-	}
-	return &res.Metrics, nil
-}
-
-// ---- catalog -----------------------------------------------------------
-
-func (c *Client) ServerTypes(ctx context.Context) ([]ServerType, error) {
-	return listAll[ServerType](ctx, c, "/server_types", "server_types", nil)
-}
-
-func (c *Client) Locations(ctx context.Context) ([]Location, error) {
-	return listAll[Location](ctx, c, "/locations", "locations", nil)
-}
-
-func (c *Client) Datacenters(ctx context.Context) ([]Datacenter, error) {
-	return listAll[Datacenter](ctx, c, "/datacenters", "datacenters", nil)
-}
-
-func (c *Client) Images(ctx context.Context, imageType string) ([]Image, error) {
-	q := url.Values{}
-	if imageType != "" {
-		q.Set("type", imageType)
-	}
-	return listAll[Image](ctx, c, "/images", "images", q)
-}
-
-func (c *Client) SSHKeys(ctx context.Context) ([]SSHKey, error) {
-	return listAll[SSHKey](ctx, c, "/ssh_keys", "ssh_keys", nil)
-}
-
-func (c *Client) ISOs(ctx context.Context) ([]ISO, error) {
-	return listAll[ISO](ctx, c, "/isos", "isos", nil)
-}
-
-func (c *Client) Pricing(ctx context.Context) (*Pricing, error) {
-	var res struct {
-		Pricing Pricing `json:"pricing"`
-	}
-	if err := c.do(ctx, http.MethodGet, "/pricing", nil, &res); err != nil {
-		return nil, err
-	}
-	return &res.Pricing, nil
+	return &Page[T]{
+		Items:   items,
+		Page:    meta.Pagination.Page,
+		PerPage: meta.Pagination.PerPage,
+		Total:   meta.Pagination.TotalEntries,
+	}, nil
 }
