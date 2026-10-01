@@ -26,6 +26,21 @@ func Ready() bool { return hcloud != nil }
 // locCode turns "fsn1" into "FSN1".
 func locCode(name string) string { return strings.ToUpper(name) }
 
+// locationSlug turns "FSN1"/"Fsn1" into the "fsn1" slug the API expects for
+// create-time location references.
+func locationSlug(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// locationInfo is the presentation shape of a Hetzner location, shared by
+// every resource view that reports where it lives.
+func locationInfo(l hetzner.Location) types.LocationInfo {
+	return types.LocationInfo{
+		Code:    locCode(l.Name),
+		City:    l.City,
+		Country: l.Country,
+		Zone:    l.NetworkZone,
+	}
+}
+
 // shownPrice is the price the UI shows: gross, i.e. including the VAT
 // Hetzner applies to *this* account — the same figure the Hetzner console
 // shows (net × 1.24 on a 24 % account, e.g. CCX13 €42.99 → €53.31). Net

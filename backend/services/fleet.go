@@ -109,12 +109,7 @@ func toFleetItem(s hetzner.Server, idx *pricingIndex, action hetzner.Action, cpu
 			Category:   s.ServerType.Category,
 			Deprecated: s.ServerType.Deprecated,
 		},
-		Location: types.LocationInfo{
-			Code:    locCode(loc.Name),
-			City:    loc.City,
-			Country: loc.Country,
-			Zone:    loc.NetworkZone,
-		},
+		Location:       locationInfo(loc),
 		Locked:         s.Locked,
 		Rescue:         s.RescueEnabled,
 		ISO:            s.ISO != nil,

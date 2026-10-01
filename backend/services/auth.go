@@ -81,8 +81,8 @@ const (
 )
 
 type loginAttempt struct {
-	first  time.Time
-	fails  int
+	first time.Time
+	fails int
 }
 
 // loginThrottle keeps a sliding window of failures per client IP. The map is

@@ -152,10 +152,12 @@ func ServerDelete(ctx context.Context, id int64) (types.ActionInfo, error) {
 }
 
 // ActionResult is what every action endpoint returns. Most actions leave
-// RootPassword empty.
+// RootPassword empty; firewall rule/apply actions return several rows and
+// then Action mirrors the first of them.
 type ActionResult struct {
-	Action       types.ActionInfo `json:"action"`
-	RootPassword string           `json:"rootPassword"`
+	Action       types.ActionInfo   `json:"action"`
+	Actions      []types.ActionInfo `json:"actions"`
+	RootPassword string             `json:"rootPassword"`
 }
 
 // ServerAction runs one whitelisted server action with an optional payload.
