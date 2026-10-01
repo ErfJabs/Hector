@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -20,8 +21,18 @@ func Login(c *fiber.Ctx) error {
 	if err := parseBody(c, &req); err != nil {
 		return fail(c, err)
 	}
-	token, err := services.Login(req.Username, req.Password)
+	token, err := services.Login(req.Username, req.Password, c.IP())
 	if err != nil {
+		var throttled *services.ErrThrottled
+		if errors.As(err, &throttled) {
+			if throttled.RetryAfter > 0 {
+				c.Set(fiber.HeaderRetryAfter, strconv.Itoa(int(throttled.RetryAfter.Seconds())+1))
+			}
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"message": "Too many sign-in attempts — wait a moment and try again",
+				"code":    "too_many_attempts",
+			})
+		}
 		if errors.Is(err, services.ErrInvalidCredentials) {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"message": "Wrong username or password",
